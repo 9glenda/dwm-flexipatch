@@ -385,7 +385,11 @@ static const char *layoutmenu_cmd = "layoutmenu.sh";
 
 #if COOL_AUTOSTART_PATCH
 static const char *const autostart[] = {
-	"st", NULL,
+	"nitrogen","--restore",NULL,
+	"xautolock","-locker","xlock -startcmd 'xset dpms force suspend'", NULL,
+	"picom", NULL,
+	"sh","-c","$HOME/.dotfiles/system/src/dwm/bar.sh",NULL,
+        "sh","-c","$HOME/.dotfiles/rust/welcome/welcome",NULL,
 	NULL /* terminate */
 };
 #endif // COOL_AUTOSTART_PATCH
@@ -393,7 +397,8 @@ static const char *const autostart[] = {
 #if RENAMED_SCRATCHPADS_PATCH
 static const char *scratchpadcmd[] = {"s", "st", "-n", "spterm", NULL};
 #elif SCRATCHPADS_PATCH
-const char *spcmd1[] = {"st", "-n", "spterm", "-g", "120x34", NULL };
+// const char *spcmd1[] = {"st", "-n", "spterm", "-g", "120x34", NULL };
+const char *spcmd1[] = {"alacritty", "--class", "spterm", NULL };
 static Sp scratchpads[] = {
    /* name          cmd  */
    {"spterm",      spcmd1},
@@ -427,16 +432,19 @@ static Sp scratchpads[] = {
  * until it an icon matches. Similarly if there are two tag icons then it would alternate between
  * them. This works seamlessly with alternative tags and alttagsdecoration patches.
  */
-#if NAMETAG_PATCH
-static char tagicons[][NUMTAGS][MAX_TAGLEN] =
-#else
-static char *tagicons[][NUMTAGS] =
-#endif // NAMETAG_PATCH
-{
-	[DEFAULT_TAGS]        = { "1", "2", "3", "4", "5", "6", "7", "8", "9" },
-	[ALTERNATIVE_TAGS]    = { "A", "B", "C", "D", "E", "F", "G", "H", "I" },
-	[ALT_TAGS_DECORATION] = { "<1>", "<2>", "<3>", "<4>", "<5>", "<6>", "<7>", "<8>", "<9>" },
+static char *tagicons[][1] = {
+        [DEFAULT_TAGS] = { "•" },
 };
+// #if NAMETAG_PATCH
+// static char tagicons[][NUMTAGS][MAX_TAGLEN] =
+// #else
+// static char *tagicons[][NUMTAGS] =
+// #endif // NAMETAG_PATCH
+// {
+// 	[DEFAULT_TAGS]        = { "1", "2", "3", "4", "5", "6", "7", "8", "9" },
+// 	[ALTERNATIVE_TAGS]    = { "A", "B", "C", "D", "E", "F", "G", "H", "I" },
+// 	[ALT_TAGS_DECORATION] = { "<1>", "<2>", "<3>", "<4>", "<5>", "<6>", "<7>", "<8>", "<9>" },
+// };
 
 #if BAR_TAGGRID_PATCH
 /* grid of tags */
@@ -853,7 +861,7 @@ static const char *dmenucmd[] = {
 	#endif // BAR_DMENUMATCHTOP_PATCH
 	NULL
 };
-static const char *termcmd[]  = { "st", NULL };
+static const char *termcmd[]  = { "alacritty", NULL };
 
 #if BAR_STATUSCMD_PATCH
 #if BAR_DWMBLOCKS_PATCH
