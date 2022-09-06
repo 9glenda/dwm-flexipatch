@@ -388,7 +388,7 @@ static const char *const autostart[] = {
 	"nitrogen","--restore",NULL,
 	"xautolock","-locker","xlock -startcmd 'xset dpms force suspend'", NULL,
 	"picom", NULL,
-	"sh","-c","$HOME/.dotfiles/system/src/dwm/bar.sh",NULL,
+	"sh","-c","$HOME/.dotfiles/system/src/bar.sh",NULL,
         "sh","-c","$HOME/.dotfiles/rust/welcome/welcome",NULL,
 	NULL /* terminate */
 };
