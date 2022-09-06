@@ -158,7 +158,7 @@ static char normbordercolor[]            = "#444444";
 static char normfloatcolor[]             = "#db8fd9";
 
 static char selfgcolor[]                 = "#eeeeee";
-static char selbgcolor[]                 = "#005577";
+static char selbgcolor[]                 = "#6e9b8b";
 static char selbordercolor[]             = "#005577";
 static char selfloatcolor[]              = "#005577";
 
