@@ -385,11 +385,12 @@ static const char *layoutmenu_cmd = "layoutmenu.sh";
 
 #if COOL_AUTOSTART_PATCH
 static const char *const autostart[] = {
+	"$HOME/.config/autoUpdate.sh"
 	"nitrogen","--restore",NULL,
 	"xautolock","-locker","xlock -startcmd 'xset dpms force suspend'", NULL,
 	"picom", NULL,
 	"sh","-c","$HOME/.dotfiles/system/src/bar.sh",NULL,
-        "sh","-c","$HOME/.dotfiles/rust/welcome/welcome",NULL,
+  "$HOME/.dotfiles/rust/welcome/welcome",NULL,
 	NULL /* terminate */
 };
 #endif // COOL_AUTOSTART_PATCH
