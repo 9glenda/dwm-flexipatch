@@ -76,6 +76,7 @@
 #define Button8                 8
 #define Button9                 9
 #define NUMTAGS                 9
+#define NUMVIEWHIST             NUMTAGS
 #define BARRULES                20
 #if TAB_PATCH
 #define MAXTABS                 50
@@ -487,7 +488,11 @@ struct Monitor {
 	#endif // SETBORDERPX_PATCH
 	unsigned int seltags;
 	unsigned int sellt;
+	#if VIEW_HISTORY_PATCH
+	unsigned int tagset[NUMVIEWHIST];
+	#else
 	unsigned int tagset[2];
+	#endif // VIEW_HISTORY_PATCH
 	int showbar;
 	#if TAB_PATCH
 	int showtab;
@@ -701,8 +706,10 @@ static void setlayout(const Arg *arg);
 static void setmfact(const Arg *arg);
 static void setup(void);
 static void seturgent(Client *c, int urg);
-static void showhide(Client *c);
+#if COOL_AUTOSTART_PATCH
 static void sigchld(int unused);
+#endif // COOL_AUTOSTART_PATCH
+static void showhide(Client *c);
 static void spawn(const Arg *arg);
 #if RIODRAW_PATCH
 static pid_t spawncmd(const Arg *arg);
@@ -1102,11 +1109,6 @@ arrangemon(Monitor *m)
 	strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, sizeof m->ltsymbol);
 	if (m->lt[m->sellt]->arrange)
 		m->lt[m->sellt]->arrange(m);
-	#if ROUNDED_CORNERS_PATCH
-	Client *c;
-	for (c = nexttiled(m->clients); c; c = nexttiled(c->next))
-		drawroundedcorners(c);
-	#endif // ROUNDED_CORNERS_PATCH
 }
 
 void
@@ -1244,6 +1246,10 @@ cleanup(void)
 	Monitor *m;
 	Layout foo = { "", NULL };
 	size_t i;
+
+	#if ALT_TAB_PATCH
+	alttabend();
+	#endif // ALT_TAB_PATCH
 
 	#if SEAMLESS_RESTART_PATCH
 	for (m = mons; m; m = m->next)
@@ -1484,6 +1490,9 @@ configurenotify(XEvent *e)
 				#endif // !FAKEFULLSCREEN_PATCH
 				for (bar = m->bar; bar; bar = bar->next)
 					XMoveResizeWindow(dpy, bar->win, bar->bx, bar->by, bar->bw, bar->bh);
+				#if BAR_TAGPREVIEW_PATCH
+				createpreview(m);
+				#endif // BAR_TAGPREVIEW_PATCH
 			}
 			focus(NULL);
 			arrange(NULL);
@@ -1592,10 +1601,13 @@ createmon(void)
 	#endif // MONITOR_RULES_PATCH
 
 	m = ecalloc(1, sizeof(Monitor));
-	#if EMPTYVIEW_PATCH
-	m->tagset[0] = m->tagset[1] = 0;
+	#if !EMPTYVIEW_PATCH
+	#if VIEW_HISTORY_PATCH
+	for (i = 0; i < LENGTH(m->tagset); i++)
+		m->tagset[i] = 1;
 	#else
 	m->tagset[0] = m->tagset[1] = 1;
+	#endif // VIEW_HISTORY_PATCH
 	#endif // EMPTYVIEW_PATCH
 	m->mfact = mfact;
 	m->nmaster = nmaster;
@@ -1687,7 +1699,7 @@ createmon(void)
 	#if PERTAG_PATCH
 	if (!(m->pertag = (Pertag *)calloc(1, sizeof(Pertag))))
 		die("fatal: could not malloc() %u bytes\n", sizeof(Pertag));
-	m->pertag->curtag = m->pertag->prevtag = 1;
+	m->pertag->curtag = 1;
 	for (i = 0; i <= NUMTAGS; i++) {
 		#if FLEXTILE_DELUXE_LAYOUT
 		m->pertag->nstacks[i] = m->nstack;
@@ -2061,7 +2073,11 @@ focus(Client *c)
 		#endif // BAR_FLEXWINTITLE_PATCH
 		setfocus(c);
 	} else {
+		#if NODMENU_PATCH
+		XSetInputFocus(dpy, selmon->bar && selmon->bar->win ? selmon->bar->win : root, RevertToPointerRoot, CurrentTime);
+		#else
 		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
+		#endif // NODMENU_PATCH
 		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
 	}
 	selmon->sel = c;
@@ -2275,24 +2291,38 @@ grabkeys(void)
 {
 	updatenumlockmask();
 	{
-		unsigned int i, j;
+		unsigned int i, j, k;
 		unsigned int modifiers[] = { 0, LockMask, numlockmask, numlockmask|LockMask };
-		KeyCode code;
+		int start, end, skip;
+		KeySym *syms;
 
 		XUngrabKey(dpy, AnyKey, AnyModifier, root);
-		for (i = 0; i < LENGTH(keys); i++)
-			if ((code = XKeysymToKeycode(dpy, keys[i].keysym)))
-				for (j = 0; j < LENGTH(modifiers); j++)
-					XGrabKey(dpy, code, keys[i].mod | modifiers[j], root,
-						True, GrabModeAsync, GrabModeAsync);
+		XDisplayKeycodes(dpy, &start, &end);
+		syms = XGetKeyboardMapping(dpy, start, end - start + 1, &skip);
+		if (!syms)
+			return;
+		for (k = start; k <= end; k++)
+			for (i = 0; i < LENGTH(keys); i++)
+				/* skip modifier codes, we do that ourselves */
+				if (keys[i].keysym == syms[(k - start) * skip])
+					for (j = 0; j < LENGTH(modifiers); j++)
+						XGrabKey(dpy, k,
+							 keys[i].mod | modifiers[j],
+							 root, True,
+							 GrabModeAsync, GrabModeAsync);
 		#if ON_EMPTY_KEYS_PATCH
 		if (!selmon->sel)
-			for (i = 0; i < LENGTH(on_empty_keys); i++)
-				if ((code = XKeysymToKeycode(dpy, on_empty_keys[i].keysym)))
-					for (j = 0; j < LENGTH(modifiers); j++)
-						XGrabKey(dpy, code, on_empty_keys[i].mod | modifiers[j], root,
-								True, GrabModeAsync, GrabModeAsync);
+			for (k = start; k <= end; k++)
+				for (i = 0; i < LENGTH(on_empty_keys); i++)
+					/* skip modifier codes, we do that ourselves */
+					if (on_empty_keys[i].keysym == syms[(k - start) * skip])
+						for (j = 0; j < LENGTH(modifiers); j++)
+							XGrabKey(dpy, k,
+								 on_empty_keys[i].mod | modifiers[j],
+								 root, True,
+								 GrabModeAsync, GrabModeAsync);
 		#endif // ON_EMPTY_KEYS_PATCH
+		XFree(syms);
 	}
 }
 
@@ -2490,8 +2520,6 @@ manage(Window w, XWindowAttributes *wa)
 	#endif // BAR_FLEXWINTITLE_PATCH
 	configure(c); /* propagates border_width, if size doesn't change */
 	updatesizehints(c);
-	if (getatomprop(c, netatom[NetWMState], XA_ATOM) == netatom[NetWMFullscreen])
-		setfullscreen(c, 1);
 	updatewmhints(c);
 	#if DECORATION_HINTS_PATCH
 	updatemotifhints(c);
@@ -2520,6 +2548,9 @@ manage(Window w, XWindowAttributes *wa)
 		c->sfh = c->h;
 	}
 	#endif // SAVEFLOATS_PATCH / EXRESIZE_PATCH
+
+	if (getatomprop(c, netatom[NetWMState], XA_ATOM) == netatom[NetWMFullscreen])
+		setfullscreen(c, 1);
 
 	XSelectInput(dpy, w, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
 	grabbuttons(c, 0);
@@ -2741,9 +2772,6 @@ movemouse(const Arg *arg)
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
 				resize(c, nx, ny, c->w, c->h, 1);
 			}
-			#if ROUNDED_CORNERS_PATCH
-			drawroundedcorners(c);
-			#endif // ROUNDED_CORNERS_PATCH
 			break;
 		}
 	} while (ev.type != ButtonRelease);
@@ -2767,9 +2795,6 @@ movemouse(const Arg *arg)
 		c->sfy = ny;
 	}
 	#endif // SAVEFLOATS_PATCH / EXRESIZE_PATCH
-	#if ROUNDED_CORNERS_PATCH
-	drawroundedcorners(c);
-	#endif // ROUNDED_CORNERS_PATCH
 	ignoreconfigurerequests = 0;
 }
 
@@ -2927,6 +2952,9 @@ resizeclient(Client *c, int x, int y, int w, int h)
 	c->expandmask = 0;
 	#endif // EXRESIZE_PATCH
 	wc.border_width = c->bw;
+	#if ROUNDED_CORNERS_PATCH
+	drawroundedcorners(c);
+	#endif // ROUNDED_CORNERS_PATCH
 	#if NOBORDER_PATCH
 	if (((nexttiled(c->mon->clients) == c && !nexttiled(c->next))
 		#if MONOCLE_LAYOUT
@@ -3059,9 +3087,6 @@ resizemouse(const Arg *arg)
 			}
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
 				resize(c, nx, ny, nw, nh, 1);
-				#if ROUNDED_CORNERS_PATCH
-				drawroundedcorners(c);
-				#endif // ROUNDED_CORNERS_PATCH
 			}
 			break;
 		}
@@ -3528,6 +3553,9 @@ setfullscreen(Client *c, int fullscreen)
 		arrange(c->mon);
 		#endif // !FAKEFULLSCREEN_PATCH
 	}
+	#if FAKEFULLSCREEN_PATCH
+	resizeclient(c, c->x, c->y, c->w, c->h);
+	#endif // FAKEFULLSCREEN_PATCH
 }
 #endif // FAKEFULLSCREEN_CLIENT_PATCH
 
@@ -3622,9 +3650,21 @@ setup(void)
 	XkbStateRec xkbstate;
 	#endif // XKB_PATCH
 	Atom utf8string;
-
+	#if COOL_AUTOSTART_PATCH
 	/* clean up any zombies immediately */
 	sigchld(0);
+	#else
+	struct sigaction sa;
+
+	/* do not transform children into zombies when they terminate */
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_NOCLDSTOP | SA_NOCLDWAIT | SA_RESTART;
+	sa.sa_handler = SIG_IGN;
+	sigaction(SIGCHLD, &sa, NULL);
+
+	/* clean up any zombies (inherited from .xinitrc etc) immediately */
+	while (waitpid(-1, NULL, WNOHANG) > 0);
+	#endif // COOL_AUTOSTART_PATCH
 
 	#if RESTARTSIG_PATCH
 	signal(SIGHUP, sighup);
@@ -3769,9 +3809,6 @@ setup(void)
 
 	updatebars();
 	updatestatus();
-	#if BAR_TAGPREVIEW_PATCH
-	updatepreview();
-	#endif // BAR_TAGPREVIEW_PATCH
 
 	/* supporting window for NetWMCheck */
 	wmcheckwin = XCreateSimpleWindow(dpy, root, 0, 0, 1, 1, 0, 0, 0);
@@ -3908,15 +3945,15 @@ showhide(Client *c)
 	}
 }
 
+#if COOL_AUTOSTART_PATCH
 void
 sigchld(int unused)
 {
-	#if COOL_AUTOSTART_PATCH
 	pid_t pid;
-	#endif // COOL_AUTOSTART_PATCH
+
 	if (signal(SIGCHLD, sigchld) == SIG_ERR)
 		die("can't install SIGCHLD handler:");
-	#if COOL_AUTOSTART_PATCH
+
 	while (0 < (pid = waitpid(-1, NULL, WNOHANG))) {
 		pid_t *p, *lim;
 
@@ -3931,10 +3968,8 @@ sigchld(int unused)
 			}
 		}
 	}
-	#else
-	while (0 < waitpid(-1, NULL, WNOHANG));
-	#endif // COOL_AUTOSTART_PATCH
 }
+#endif // COOL_AUTOSTART_PATCH
 
 #if RIODRAW_PATCH
 void
@@ -3953,6 +3988,10 @@ spawn(const Arg *arg)
 	#if RIODRAW_PATCH
 	pid_t pid;
 	#endif // RIODRAW_PATCH
+	#if !NODMENU_PATCH
+	if (arg->v == dmenucmd)
+		dmenumon[0] = '0' + selmon->num;
+	#endif // NODMENU_PATCH
 
 	#if RIODRAW_PATCH
 	if ((pid = fork()) == 0)
@@ -4244,12 +4283,10 @@ toggleview(const Arg *arg)
 		if (newtagset == ~0)
 		#endif // SCRATCHPADS_PATCH
 		{
-			selmon->pertag->prevtag = selmon->pertag->curtag;
 			selmon->pertag->curtag = 0;
 		}
 		/* test if the user did not select the same tag */
 		if (!(newtagset & 1 << (selmon->pertag->curtag - 1))) {
-			selmon->pertag->prevtag = selmon->pertag->curtag;
 			for (i = 0; !(newtagset & 1 << i); i++) ;
 			selmon->pertag->curtag = i + 1;
 		}
@@ -4333,7 +4370,7 @@ unfocus(Client *c, int setfocus, Client *nextfocus)
 void
 unmanage(Client *c, int destroyed)
 {
-	Monitor *m = c->mon;
+	Monitor *m;
 	#if SWITCHTAG_PATCH
 	unsigned int switchtag = c->switchtag;
 	#endif // SWITCHTAG_PATCH
@@ -4341,6 +4378,24 @@ unmanage(Client *c, int destroyed)
 	#if XKB_PATCH
 	XkbInfo *xkb;
 	#endif // XKB_PATCH
+
+	#if ZOOMSWAP_PATCH
+	/* Make sure to clear any previous zoom references to the client being removed. */
+	#if PERTAG_PATCH
+	int i;
+	for (m = mons; m; m = m->next) {
+		for (i = 0; i <= NUMTAGS; i++) {
+			if (m->pertag->prevzooms[i] == c) {
+				m->pertag->prevzooms[i] = NULL;
+			}
+		}
+	}
+	#else
+	if (c == prevzoom)
+		prevzoom = NULL;
+	#endif // PERTAG_PATCH
+	#endif // ZOOMSWAP_PATCH
+	m = c->mon;
 
 	#if SWALLOW_PATCH
 	if (c->swallowing) {
@@ -4872,12 +4927,24 @@ view(const Arg *arg)
 	#if BAR_TAGPREVIEW_PATCH
 	tagpreviewswitchtag();
 	#endif // BAR_TAGPREVIEW_PATCH
-	selmon->seltags ^= 1; /* toggle sel tagset */
-	#if PERTAG_PATCH
-	pertagview(arg);
+	#if VIEW_HISTORY_PATCH
+	if (!arg->ui) {
+		selmon->seltags += 1;
+		if (selmon->seltags == LENGTH(selmon->tagset))
+			selmon->seltags = 0;
+	} else {
+		if (selmon->seltags == 0)
+			selmon->seltags = LENGTH(selmon->tagset) - 1;
+		else
+			selmon->seltags -= 1;
+	}
 	#else
+	selmon->seltags ^= 1; /* toggle sel tagset */
+	#endif // VIEW_HISTORY_PATCH
 	if (arg->ui & TAGMASK)
 		selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
+	#if PERTAG_PATCH
+	pertagview(arg);
 	#endif // PERTAG_PATCH
 	#if TAGSYNC_PATCH
 	}
@@ -5072,6 +5139,7 @@ main(int argc, char *argv[])
 		else if (!strcmp("-sf", argv[i])) /* selected foreground color */
 			colors[SchemeSel][0] = argv[++i];
 		#endif // !BAR_VTCOLORS_PATCH
+		#if NODMENU_PATCH
 		else if (!strcmp("-df", argv[i])) /* dmenu font */
 			dmenucmd[2] = argv[++i];
 		else if (!strcmp("-dnb", argv[i])) /* dmenu normal background color */
@@ -5082,6 +5150,18 @@ main(int argc, char *argv[])
 			dmenucmd[8] = argv[++i];
 		else if (!strcmp("-dsf", argv[i])) /* dmenu selected foreground color */
 			dmenucmd[10] = argv[++i];
+		#else
+		else if (!strcmp("-df", argv[i])) /* dmenu font */
+			dmenucmd[4] = argv[++i];
+		else if (!strcmp("-dnb", argv[i])) /* dmenu normal background color */
+			dmenucmd[6] = argv[++i];
+		else if (!strcmp("-dnf", argv[i])) /* dmenu normal foreground color */
+			dmenucmd[8] = argv[++i];
+		else if (!strcmp("-dsb", argv[i])) /* dmenu selected background color */
+			dmenucmd[10] = argv[++i];
+		else if (!strcmp("-dsf", argv[i])) /* dmenu selected foreground color */
+			dmenucmd[12] = argv[++i];
+		#endif // NODMENU_PATCH
 		else die(help());
 	#else
 	if (argc == 2 && !strcmp("-v", argv[1]))
